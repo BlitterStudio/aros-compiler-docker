@@ -65,7 +65,7 @@ RUN set -eux; \
         x86_64-aros) \
             branch=master; \
             cfg_target=linux-x86_64; \
-            sdk_make_args="-s"; \
+            sdk_make_args=""; \
             need_reconfigure=yes; \
             ;; \
         *) echo "Unknown aros_target=${aros_target}" >&2; exit 1;; \
