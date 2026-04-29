@@ -9,6 +9,14 @@ on:
   schedule:
     - cron: '0 0 * * 0'   # weekly: AROS source moves; rebuild to pick up changes
 
+# Cancel in-flight runs when newer commits land on the same ref.
+# A 17-min build that's about to be obsoleted by a follow-up commit is wasted
+# CI minutes. The image tag is fixed (midwan/aros-compiler:<target>), so only
+# the latest run's output matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   push_to_registry:
     name: Build and push AROS cross-compiler images
