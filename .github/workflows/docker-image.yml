@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        aros_target: [i386-aros, x86_64-aros]
+        aros_target: [i386-aros, x86_64-aros, aarch64-aros]
 
     steps:
       - name: Free up disk space
