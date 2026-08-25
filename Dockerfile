@@ -26,7 +26,10 @@
 
 ARG ubuntu_release=24.04
 ARG aros_target=i386-aros
-ARG aros_repo=https://github.com/deadwood2/AROS.git
+# AROS source repo. Empty (the default) selects the per-target upstream
+# (deadwood2 for i386/x86_64, aros-development-team for aarch64); an
+# explicit --build-arg aros_repo=<url> overrides every target's default.
+ARG aros_repo=
 # AROS-Contrib provides workbench/libs/xad/portable, which is what we
 # fish the xadmaster.library headers out of. The repo lives at the
 # AROS development team's contrib repo; we clone it as a sibling
@@ -102,18 +105,19 @@ RUN set -eux; \
 # add a `make xadmaster-includes` pass to install the xadmaster.library
 # headers (proto/, inline/, clib/, libraries/) into the SDK.
 RUN set -eux; \
-    repo="${aros_repo}"; \
     gitflags="--depth 1"; \
     sdk_dir=Development; \
     case "${aros_target}" in \
         i386-aros) \
             branch=alt-abiv0; \
+            repo="${aros_repo:-https://github.com/deadwood2/AROS.git}"; \
             cfg_target=linux-i386; \
             sdk_make_args="-s sdk"; \
             need_reconfigure=no; \
             ;; \
         x86_64-aros) \
             branch=master; \
+            repo="${aros_repo:-https://github.com/deadwood2/AROS.git}"; \
             cfg_target=linux-x86_64; \
             sdk_make_args=""; \
             need_reconfigure=yes; \
@@ -133,7 +137,7 @@ RUN set -eux; \
             # patches/gcc-6.5.0-aarch64-libgcc.patch.
             branch=master; \
             gitflags="--depth 1 --recurse-submodules --shallow-submodules"; \
-            repo=https://github.com/aros-development-team/AROS.git; \
+            repo="${aros_repo:-https://github.com/aros-development-team/AROS.git}"; \
             cfg_target=raspi-aarch64; \
             sdk_dir=Developer; \
             sdk_make_args=""; \

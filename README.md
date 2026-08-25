@@ -67,7 +67,7 @@ The toolchain include paths are baked into the cross-gcc spec, so `i386-aros-gcc
 | Arg | Default | Notes |
 |---|---|---|
 | `aros_target` | `i386-aros` | `i386-aros` (ABIv0), `x86_64-aros` (ABIv11), or `aarch64-aros` (ABIv11 ARM64) |
-| `aros_repo` | `https://github.com/deadwood2/AROS.git` | AROS source repo |
+| `aros_repo` | *(per-target upstream)* | AROS source repo override. Empty selects the target's default (`deadwood2/AROS` for i386/x86_64, `aros-development-team/AROS` for aarch64); set it to build from a fork or pinned mirror |
 | `aros_contrib_repo` | `https://github.com/aros-development-team/contrib.git` | AROS-Contrib (xadmaster lives here) |
 | `lha_repo` | `https://github.com/jca02266/lha.git` | LHa for UNIX source repo |
 | `lha_ref` | `release-20211125` | LHa for UNIX tag/branch (pinned for reproducibility) |
