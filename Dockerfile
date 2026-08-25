@@ -1,9 +1,10 @@
 # AROS cross-compiler image
 # Author: Dimitris Panokostas
 #
-# Build args:
-#   aros_target    - "i386-aros" (ABIv0, alt-abiv0 branch)
-#                    "x86_64-aros" (ABIv11, master branch)
+#   aros_target    - "i386-aros" (ABIv0, deadwood2/AROS alt-abiv0 branch)
+#                    "x86_64-aros" (ABIv11, deadwood2/AROS master branch)
+#                    "aarch64-aros" (ABIv11 ARM64, aros-development-team/AROS
+#                     master, raspi-aarch64: Raspberry Pi 3/4/5 64-bit port)
 #   ubuntu_release - Ubuntu base image tag (default: 24.04)
 #
 # The resulting image places the AROS cross-toolchain on PATH so
@@ -18,8 +19,8 @@
 #     produce .lha release archives)
 #
 # Usage:
-#   docker build -t midwan/aros-compiler:i386-aros   --build-arg aros_target=i386-aros .
 #   docker build -t midwan/aros-compiler:x86_64-aros --build-arg aros_target=x86_64-aros .
+#   docker build -t midwan/aros-compiler:aarch64-aros --build-arg aros_target=aarch64-aros .
 #
 #   docker run --rm -it -v <path-to-dopus5-sources>:/work midwan/aros-compiler:i386-aros
 
@@ -66,7 +67,10 @@ RUN apt-get update && \
         unzip xorriso mtools mingw-w64 zsh && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt/aros-work
+
+# Local crosstools patches, appended to the corresponding AROS diff before
+# the build (see patches/README comments inside each file).
+COPY patches/ /tmp/patches/
 
 # Build LHa for UNIX 1.14i-ac and stash the binary under /opt/lha-bin
 # for the runtime stage. Doing it here (in the builder) keeps the
@@ -98,6 +102,9 @@ RUN set -eux; \
 # add a `make xadmaster-includes` pass to install the xadmaster.library
 # headers (proto/, inline/, clib/, libraries/) into the SDK.
 RUN set -eux; \
+    repo="${aros_repo}"; \
+    gitflags="--depth 1"; \
+    sdk_dir=Development; \
     case "${aros_target}" in \
         i386-aros) \
             branch=alt-abiv0; \
@@ -111,9 +118,30 @@ RUN set -eux; \
             sdk_make_args=""; \
             need_reconfigure=yes; \
             ;; \
+        aarch64-aros) \
+            # ARM64 native port. Lives in aros-development-team/AROS master
+            # (deadwood2/AROS master has no arch/aarch64-all beyond a few
+            # include files); same tree the upstream raspi-aarch64 nightlies
+            # (Raspberry Pi 3/4/5 in 64-bit mode) are built from. Standalone
+            # flavour: cross-compiles with the aarch64-aros GNU toolchain
+            # (gcc 6.5.0, the tree's default - newer gcc breaks its ld128
+            # math code) from the x86_64 host, no ARM host compiler needed.
+            # The ADT tree keeps its translation catalogs in git submodules,
+            # hence the recursive clone. Like x86_64-aros, the SDK needs the
+            # full AROS build (collect-aros + linklibs), so reconfigure +
+            # plain make. libgcc needs a small aarch64 fixup - see
+            # patches/gcc-6.5.0-aarch64-libgcc.patch.
+            branch=master; \
+            gitflags="--depth 1 --recurse-submodules --shallow-submodules"; \
+            repo=https://github.com/aros-development-team/AROS.git; \
+            cfg_target=raspi-aarch64; \
+            sdk_dir=Developer; \
+            sdk_make_args=""; \
+            need_reconfigure=yes; \
+            ;; \
         *) echo "Unknown aros_target=${aros_target}" >&2; exit 1;; \
     esac; \
-    git clone --depth 1 --branch "${branch}" "${aros_repo}" /opt/aros-work/AROS; \
+    git clone ${gitflags} --branch "${branch}" "${repo}" /opt/aros-work/AROS; \
     # Sparse-clone of AROS-Contrib pulling only workbench/libs/xad (~6 MB
     # vs 175 MB for the full repo).  The full Contrib tree contains
     # several modules with mmakefile.src files that are broken against
@@ -121,10 +149,15 @@ RUN set -eux; \
     # cloning everything makes `make crosstools` fail at the mmake-scan
     # step regardless of whether we ever build those modules.  We only
     # need workbench/libs/xad for xadmaster.library, so we pull that
-    # subtree and let mmake walk a clean Contrib.
     git clone --depth 1 --filter=blob:none --sparse \
         "${aros_contrib_repo}" /opt/aros-work/AROS/contrib && \
     git -C /opt/aros-work/AROS/contrib sparse-checkout set workbench/libs/xad; \
+    if [ "${aros_target}" = "aarch64-aros" ]; then \
+        # libgcc needs an aarch64*-*-aros* case in config.host (soft-fp
+        # TF-mode routines); see the comments inside the patch file.
+        tr -d '\r' < /tmp/patches/gcc-6.5.0-aarch64-libgcc.patch \
+            >> /opt/aros-work/AROS/tools/crosstools/gnu/gcc-6.5.0-aros.diff; \
+    fi; \
     mkdir -p /opt/aros-toolchain /opt/aros-build /opt/aros-work/portssources; \
     cd /opt/aros-build; \
     /opt/aros-work/AROS/configure \
@@ -149,10 +182,10 @@ RUN set -eux; \
     make xadmaster-includes -j "$(nproc)"; \
     # Strip the build dir to just the Development sysroot (the only part
     # gcc references at runtime) and discard the AROS source / port sources.
-    mv /opt/aros-build/bin/${cfg_target}/AROS/Development /tmp/aros-dev-keep; \
+    mv /opt/aros-build/bin/${cfg_target}/AROS/${sdk_dir} /tmp/aros-dev-keep; \
     rm -rf /opt/aros-build /opt/aros-work; \
     mkdir -p /opt/aros-build/bin/${cfg_target}/AROS; \
-    mv /tmp/aros-dev-keep /opt/aros-build/bin/${cfg_target}/AROS/Development
+    mv /tmp/aros-dev-keep /opt/aros-build/bin/${cfg_target}/AROS/${sdk_dir}
 
 ############################
 # Stage 2: runtime

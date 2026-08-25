@@ -1,6 +1,6 @@
 # aros-compiler-docker
 
-Docker image with the AROS cross-compiler toolchain, used to build software targeting AROS from any Linux x86_64 host (including GitHub Actions runners).
+Docker image with the AROS cross-compiler toolchain, used to build software targeting AROS from any Linux x86_64 host (including GitHub Actions runners). Targets: i386 (ABIv0), x86_64 (ABIv11), and ARM64/aarch64 (ABIv11, Raspberry Pi).
 
 The image is published on Docker Hub: <https://hub.docker.com/r/midwan/aros-compiler>
 
@@ -17,8 +17,9 @@ The image is published on Docker Hub: <https://hub.docker.com/r/midwan/aros-comp
 |---|---|---|---|
 | `i386-aros` | ABIv0 (legacy) | [`deadwood2/AROS` `alt-abiv0`](https://github.com/deadwood2/AROS/tree/alt-abiv0) | `i386-aros-gcc` |
 | `x86_64-aros` | ABIv11 (modern) | [`deadwood2/AROS` `master`](https://github.com/deadwood2/AROS) | `x86_64-aros-gcc` |
+| `aarch64-aros` | ABIv11 (ARM64) | [`aros-development-team/AROS` `master`](https://github.com/aros-development-team/AROS) | `aarch64-aros-gcc` |
 
-The `i386-aros` toolchain produces binaries compatible with the AROS distributions most users run today (Icaros Desktop, AROS One). The `x86_64-aros` toolchain targets modern ABIv11 AROS.
+The `i386-aros` toolchain produces binaries compatible with the AROS distributions most users run today (Icaros Desktop, AROS One). The `x86_64-aros` toolchain targets modern ABIv11 AROS. The `aarch64-aros` toolchain targets the ARM64 Raspberry Pi port that the [raspi-aarch64 nightlies](https://sourceforge.net/projects/aros/files/nightly2/) are built from (Raspberry Pi 3/4/5 in 64-bit mode; run the resulting binaries under qemu-aarch64 or on real hardware).
 
 ## Usage
 
@@ -26,18 +27,19 @@ The `i386-aros` toolchain produces binaries compatible with the AROS distributio
 docker run --rm -it -v <dir-with-your-sources>:/work midwan/aros-compiler:i386-aros
 ```
 
-Inside the container, `i386-aros-gcc` (or `x86_64-aros-gcc`) and `lha` are on `PATH` along with `make`, `gawk`, and `file`, so AROS-targeted makefiles work directly — no need for a separate packaging image.
+Inside the container, `i386-aros-gcc` (or `x86_64-aros-gcc` / `aarch64-aros-gcc`) and `lha` are on `PATH` along with `make`, `gawk`, and `file`, so AROS-targeted makefiles work directly — no need for a separate packaging image.
 
 ## Building locally
 
 ```bash
-docker build -t midwan/aros-compiler:i386-aros   --build-arg aros_target=i386-aros .
+docker build -t midwan/aros-compiler:i386-aros --build-arg aros_target=i386-aros .
 docker build -t midwan/aros-compiler:x86_64-aros --build-arg aros_target=x86_64-aros .
+docker build -t midwan/aros-compiler:aarch64-aros --build-arg aros_target=aarch64-aros .
 ```
 
 The build:
 
-1. Clones the AROS source tree (deadwood2 fork) and the AROS-Contrib repo as `AROS/contrib/`.
+1. Clones the AROS source tree (deadwood2 fork for i386/x86_64, aros-development-team fork for aarch64) and the AROS-Contrib repo as `AROS/contrib/`.
 2. Builds LHa for UNIX 1.14i-ac from source.
 3. Compiles the cross-toolchain (`make crosstools`).
 4. Builds the AROS SDK (`make sdk` for ABIv0; full AROS for ABIv11).
@@ -47,15 +49,15 @@ Expect ~30-60 minutes per variant on a typical CI runner; longer under qemu emul
 
 ## CI/CD
 
-GitHub Actions builds and pushes both image tags on every push to `main` and weekly via cron, picking up upstream AROS source changes automatically. The workflow expects `DOCKER_USERNAME` and `DOCKER_PASSWORD` repository secrets.
+GitHub Actions builds and pushes all three image tags on every push to `main` and weekly via cron, picking up upstream AROS source changes automatically. The workflow expects `DOCKER_USERNAME` and `DOCKER_PASSWORD` repository secrets.
 
 ## Image layout
 
 | Path | Contents |
 |---|---|
 | `/opt/aros-toolchain/` | Cross binaries (`i386-aros-gcc`, `i386-aros-ld`, `i386-aros-as`, etc.); already on `PATH` |
-| `/opt/aros-build/bin/<target>/AROS/Development/include/` | AROS SDK headers (`exec/types.h`, `dos/dos.h`, …) plus the xadmaster headers (`proto/xadmaster.h`, `inline/xadmaster.h`, `clib/xadmaster_protos.h`, `libraries/xadmaster.h`); auto-discovered by gcc |
-| `/opt/aros-build/bin/<target>/AROS/Development/lib/` | AROS link libraries (`libamiga.a`, `libautoinit.a`, etc.) |
+| `/opt/aros-build/bin/<target>/AROS/{Development,Developer}/include/` | AROS SDK headers (`exec/types.h`, `dos/dos.h`, …) plus the xadmaster headers (`proto/xadmaster.h`, `inline/xadmaster.h`, `clib/xadmaster_protos.h`, `libraries/xadmaster.h`); auto-discovered by gcc |
+| `/opt/aros-build/bin/<target>/AROS/{Development,Developer}/lib/` | AROS link libraries (`libamiga.a`, `libautoinit.a`, etc.) |
 | `/opt/lha-bin/bin/lha` | LHa for UNIX 1.14i-ac binary; on `PATH` |
 
 The toolchain include paths are baked into the cross-gcc spec, so `i386-aros-gcc foo.c -o foo` with no extra flags finds AROS headers (and the bundled xadmaster ones) and resolves standard AROS symbols.
@@ -64,7 +66,7 @@ The toolchain include paths are baked into the cross-gcc spec, so `i386-aros-gcc
 
 | Arg | Default | Notes |
 |---|---|---|
-| `aros_target` | `i386-aros` | `i386-aros` (ABIv0) or `x86_64-aros` (ABIv11) |
+| `aros_target` | `i386-aros` | `i386-aros` (ABIv0), `x86_64-aros` (ABIv11), or `aarch64-aros` (ABIv11 ARM64) |
 | `aros_repo` | `https://github.com/deadwood2/AROS.git` | AROS source repo |
 | `aros_contrib_repo` | `https://github.com/aros-development-team/contrib.git` | AROS-Contrib (xadmaster lives here) |
 | `lha_repo` | `https://github.com/jca02266/lha.git` | LHa for UNIX source repo |

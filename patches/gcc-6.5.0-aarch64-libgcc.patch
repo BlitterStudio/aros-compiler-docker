@@ -1,0 +1,34 @@
+# Append-only extra hunk for AROS's tools/crosstools/gnu/gcc-6.5.0-aros.diff
+# (applied by `patch -p1 -f` against the pristine gcc-6.5.0 tarball, after
+# the diff's own sections).
+#
+# libgcc/config.host has no aarch64*-*-aros* case (only arm*-*-aros*,
+# m68k-*-aros* and no-op *-*-aros* catch-alls), so the aarch64 build falls
+# into the catch-all and never pulls in the soft-fp TF-mode ("long double" =
+# 128-bit on aarch64) arithmetic routines. Ports that use long double then
+# fail to link:
+#
+#     There are undefined symbols in '.../heic.datatype':
+#         U __divtf3
+#         U __eqtf2
+#         U __extendsftf2
+#         ... (all __*tf* soft-fp helpers)
+#
+# Mirrors upstream's aarch64*-*-elf case. Note: no md_unwind_header - that
+# mechanism (aarch64/aarch64-unwind.h) only exists from gcc 8 onwards, and
+# gcc 6.5's unwind-dw2.c has no #ifdef __aarch64__ window-save branch that
+# would need it.
+diff -ruN gcc-6.5.0/libgcc/config.host gcc-6.5.0.aros/libgcc/config.host
+--- gcc-6.5.0/libgcc/config.host	2017-11-21 09:41:34.000000000 +0000
++++ gcc-6.5.0.aros/libgcc/config.host	2019-03-01 02:31:13.371291400 +0000
+@@ -327,6 +327,10 @@
+ esac
+ 
+ case ${host} in
++aarch64*-*-aros*)
++	extra_parts="$extra_parts crtfastmath.o"
++	tmake_file="${tmake_file} ${cpu_type}/t-aarch64 ${cpu_type}/t-softfp t-softfp t-crtfm"
++	;;
+ aarch64*-*-elf | aarch64*-*-rtems*)
+ 	extra_parts="$extra_parts crtbegin.o crtend.o crti.o crtn.o"
+ 	extra_parts="$extra_parts crtfastmath.o"
