@@ -158,6 +158,14 @@ RUN set -eux; \
     git clone --depth 1 --filter=blob:none --sparse \
         "${aros_contrib_repo}" /opt/aros-work/AROS/contrib && \
     git -C /opt/aros-work/AROS/contrib sparse-checkout set workbench/libs/xad; \
+    if [ "${aros_target}" = "x86_64-aros" ]; then \
+        # AHI regenerates configure during the build, then config.status
+        # rechecks it. Declare AS as a precious variable so the recheck keeps
+        # the configured GCC assembler driver and its -Wa flag forwarding.
+        git -C /opt/aros-work/AROS apply \
+            /tmp/patches/deadwood2-ahi-preserve-as.patch; \
+        (cd /opt/aros-work/AROS/workbench/devs/AHI && autoconf); \
+    fi; \
     if [ "${aros_target}" = "aarch64-aros" ]; then \
         # libgcc needs an aarch64*-*-aros* case in config.host (soft-fp
         # TF-mode routines); see the comments inside the patch file.
