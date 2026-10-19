@@ -1,0 +1,11 @@
+diff --git a/workbench/devs/AHI/configure.in b/workbench/devs/AHI/configure.in
+--- a/workbench/devs/AHI/configure.in
++++ b/workbench/devs/AHI/configure.in
+@@ -12,6 +12,7 @@ AC_CONFIG_HEADER( config.h )
+ dnl Checks for programs.
+ 
+ AC_CHECK_TOOL( CC, gcc, : ) 
++AC_ARG_VAR([AS], [assembler command])
+ AC_CHECK_TOOL( AS, as, : ) 
+ AC_CHECK_TOOL( AR, ar, : )
+ AC_CHECK_TOOL( RANLIB, ranlib, : )

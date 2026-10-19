@@ -7,12 +7,14 @@
 #                     master, raspi-aarch64: Raspberry Pi 3/4/5 64-bit port)
 #   ubuntu_release - Ubuntu base image tag (default: 24.04)
 #
-# The resulting image places the AROS cross-toolchain on PATH so
-# `${arch}-aros-gcc` is directly invokable. Source/build trees are
-# discarded in the final stage to keep the image small.
+# The resulting image places the AROS cross-toolchain on PATH. i386 and
+# x86_64 use `${arch}-aros-gcc`; aarch64 provides stock Ubuntu Clang 18
+# for `--target=aarch64-aros` compilation and AROS' C `collect-aros` linker.
+# Source/build trees are discarded in the final stage to keep the image small.
 #
 # What ships in the image:
-#   - AROS cross-compiler (gcc/binutils) + SDK (libs + headers)
+#   - i386/x86_64: AROS GCC/binutils cross-toolchain + SDK (libs + headers)
+#   - aarch64: stock Ubuntu Clang 18, AROS binutils + SDK, and collect-aros
 #   - xadmaster.library headers from AROS-Contrib (so xadmaster-using
 #     modules like dopus5's xadopus.module can be cross-compiled)
 #   - LHa for UNIX 1.14i-ac (full read/write LHA tool, needed to
@@ -65,7 +67,7 @@ RUN apt-get update && \
         ca-certificates curl git make gcc g++ gawk bison flex bzip2 \
         netpbm autoconf automake libtool perl \
         libx11-dev libxext-dev libc6-dev liblzo2-dev libxxf86vm-dev \
-        libpng-dev gcc-multilib libsdl1.2-dev byacc python3-mako \
+        libpng-dev gcc-multilib libsdl1.2-dev byacc python3-mako python3-yaml \
         libxcursor-dev cmake genisoimage dh-make yasm nasm \
         unzip xorriso mtools mingw-w64 zsh && \
     rm -rf /var/lib/apt/lists/*
@@ -156,6 +158,14 @@ RUN set -eux; \
     git clone --depth 1 --filter=blob:none --sparse \
         "${aros_contrib_repo}" /opt/aros-work/AROS/contrib && \
     git -C /opt/aros-work/AROS/contrib sparse-checkout set workbench/libs/xad; \
+    if [ "${aros_target}" = "x86_64-aros" ]; then \
+        # AHI regenerates configure during the build, then config.status
+        # rechecks it. Declare AS as a precious variable so the recheck keeps
+        # the configured GCC assembler driver and its -Wa flag forwarding.
+        git -C /opt/aros-work/AROS apply \
+            /tmp/patches/deadwood2-ahi-preserve-as.patch; \
+        (cd /opt/aros-work/AROS/workbench/devs/AHI && autoconf); \
+    fi; \
     if [ "${aros_target}" = "aarch64-aros" ]; then \
         # libgcc needs an aarch64*-*-aros* case in config.host (soft-fp
         # TF-mode routines); see the comments inside the patch file.
@@ -200,28 +210,34 @@ ARG aros_target
 ENV DEBIAN_FRONTEND=noninteractive
 
 LABEL org.opencontainers.image.title="AROS cross-compiler"
-LABEL org.opencontainers.image.description="AROS cross-compiler toolchain (${aros_target}) with xadmaster headers + LHa for UNIX"
+LABEL org.opencontainers.image.description="AROS cross-toolchain (${aros_target}); aarch64 includes Clang 18 and collect-aros; with xadmaster headers + LHa for UNIX"
 LABEL org.opencontainers.image.authors="Dimitris Panokostas"
 LABEL org.opencontainers.image.source="https://github.com/BlitterStudio/aros-compiler-docker"
 LABEL org.opencontainers.image.licenses="GPL-3.0"
 
-# Runtime deps: make + gawk are needed by the dopus5 makefile.
+# Runtime deps: make + gawk are needed by the dopus5 makefile. The aarch64
+# image additionally needs stock Ubuntu Clang 18 to emit AROS-targeted code.
 # `lha` comes from /opt/lha-bin built in the builder stage; we no longer
 # install lhasa from apt because it cannot create archives (only extract).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates make gawk file && \
+    if [ "${aros_target}" = "aarch64-aros" ]; then \
+        apt-get install -y --no-install-recommends clang-18 && \
+        ln -s /usr/bin/clang-18 /usr/local/bin/clang; \
+    fi && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/aros-toolchain /opt/aros-toolchain
 COPY --from=builder /opt/aros-build /opt/aros-build
 COPY --from=builder /opt/lha-bin /opt/lha-bin
 
-# AROS' --with-aros-toolchain-install layout places the cross binaries
-# directly in the install root (e.g. /opt/aros-toolchain/i386-aros-gcc),
-# not under a bin/ subdirectory. /opt/lha-bin/bin holds the `lha` binary
-# built from jca02266/lha in the builder stage.
-ENV PATH=/opt/aros-toolchain:/opt/lha-bin/bin:$PATH
+# AROS' --with-aros-toolchain-install layout places most cross binaries
+# directly in the install root (e.g. /opt/aros-toolchain/i386-aros-gcc).
+# The aarch64 C `collect-aros` lives in its target bin/ directory, which must
+# precede that root. /opt/lha-bin/bin holds the `lha` binary built from
+# jca02266/lha in the builder stage.
+ENV PATH=/opt/aros-toolchain/${aros_target}/bin:/opt/aros-toolchain:/opt/lha-bin/bin:$PATH
 
 WORKDIR /work
 
